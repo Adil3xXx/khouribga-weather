@@ -1,0 +1,11 @@
+# systemd (للسيرفرات) — لا يحتاج cron. ثبّته في /etc/systemd/system/
+[Unit]
+Description=Khouribga daily weather bulletin to Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/khouribga-weather-bot
+EnvironmentFile=-/opt/khouribga-weather-bot/.env
+ExecStart=/usr/bin/python3 /opt/khouribga-weather-bot/weather_bot.py --send
