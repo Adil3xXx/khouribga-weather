@@ -58,7 +58,11 @@ CONFIG = {
     "lang": "ar",
 }
 API = "https://api.open-meteo.com/v1/forecast"
+GEOCODING_API = "https://geocoding-api.open-meteo.com/v1/search"
+PRAYER_API = "https://api.aladhan.com/v1/timings"
 MODELS = ("best_match", "ecmwf_ifs025", "gfs_seamless")
+TELEGRAM_API = "https://api.telegram.org"
+PRAYER_METHOD = 15  # Aladhan: Ministry of Habous (Morocco)
 
 # --------------------------------------------------------------------------- i18n
 T = {
@@ -102,6 +106,45 @@ T = {
             "dust": "غبار في الجو: حساسية الصدر تتوقع، قلّل النشاط في الخارج.",
             "fog": "ضباب في الصباح: الانتباه في الطريق قبل الشروق.",
             "nice": "جو معتدل ولطيف، مناسب للعمل والرياضة في الخارج.",
+        },
+        "cmd": {
+            "start": (
+                "👋 أهلاً بك في <b>بوت الطقس والأوقات</b> 🌤️🕌\n\n"
+                "أرسل اسم أي مدينة وسأجيبك بنشرة الطقس اليومية 🌦️\n"
+                "أو استخدم هذه الأوامر:\n\n"
+                "🌦️ <code>/طقس خريبكة</code> — حالة الطقس\n"
+                "🕌 <code>صلاة الدار البيضاء</code> — أوقات الصلاة\n"
+                "❓ <code>/help</code> — كل الأوامر\n\n"
+                "الردود دائماً بالعربية 🇲🇦"
+            ),
+            "help": (
+                "📖 <b>الأوامر المتاحة</b>\n\n"
+                "🌦️ <code>/طقس &lt;مدينة&gt;</code>\n    الطقس اليوم في المدينة\n"
+                "🕌 <code>صلاة &lt;مدينة&gt;</code>\n    أوقات الصلوات الخمس\n"
+                "🌤️ <code>/طقس</code> بدون مدينة\n    الطقس في خريبكة (الافتراضي)\n"
+                "🕌 <code>صلاة</code> بدون مدينة\n    الأوقات في خريبكة\n"
+                "🏠 <code>/start</code> — رسالة الترحيب\n"
+                "👋 <code>سلام</code> — التحية\n"
+                "👨‍💻 <code>/help</code> — هذه القائمة\n\n"
+                "مثال: <code>صلاة مراكش</code> أو <code>/طقس الرباط</code>"
+            ),
+            "welcome": "أهلاً! جرب مثلاً: <code>صلاة فاس</code> أو <code>/طقس طنجة</code>",
+            "hello": "مرحباً بك يا عزيزي! 👋 كيف أستطيع المساعدة؟ جرب <code>/help</code>",
+            "thanks": "على الرحب والسعة! 😊 جرب تسألني عن أي مدينة أخرى 🌍",
+            "weather": "🌦️ الطقس في مدينة",
+            "prayer": "🕌 أوقات الصلاة في",
+            "weather_header": "🌦️ <b>نشرة الطقس —",
+            "prayer_header": "🕌 <b>أوقات الصلاة —",
+            "prayer_fajr": "الفجر",
+            "prayer_sunrise": "الشروق",
+            "prayer_dhuhr": "الظهر",
+            "prayer_asr": "العصر",
+            "prayer_maghrib": "المغرب",
+            "prayer_isha": "العشاء",
+            "not_found": "❌ لم أجد مدينة بهذا الاسم. تأكد من الإملاء أو جرّب اسماً أقرب (مثال: <code>الدار البيضاء</code> أو <code>Casablanca</code>).",
+            "error": "⚠️ حدث خطأ:",
+            "date_line": "التاريخ:",
+            "hijri": "التقويم الهجري:",
         },
     },
     "fr": {
@@ -303,7 +346,8 @@ def uv_level(uv, levels: list[str]) -> str:
 
 
 # --------------------------------------------------------------------------- fetch
-def fetch_weather(lang: str, retries: int, timeout: int) -> dict:
+def fetch_weather(lang: str, retries: int, timeout: int, lat: float | None = None,
+                  lon: float | None = None, tz: str | None = None) -> dict:
     daily = ",".join([
         "temperature_2m_max", "temperature_2m_min", "apparent_temperature_max",
         "precipitation_probability_max", "precipitation_sum", "weather_code",
@@ -313,8 +357,9 @@ def fetch_weather(lang: str, retries: int, timeout: int) -> dict:
     current = ("temperature_2m,apparent_temperature,relative_humidity_2m,"
                "precipitation,weather_code,wind_speed_10m,wind_direction_10m")
     params = {
-        "latitude": CONFIG["lat"], "longitude": CONFIG["lon"],
-        "current": current, "daily": daily, "timezone": CONFIG["tz"],
+        "latitude": CONFIG["lat"] if lat is None else lat,
+        "longitude": CONFIG["lon"] if lon is None else lon,
+        "current": current, "daily": daily, "timezone": CONFIG["tz"] if tz is None else tz,
         "forecast_days": 1, "wind_speed_unit": "kmh", "temperature_unit": "celsius",
         "models": ",".join(MODELS),
     }
@@ -323,6 +368,74 @@ def fetch_weather(lang: str, retries: int, timeout: int) -> dict:
     if "daily" not in data:
         raise RuntimeError(f"unexpected API answer: {json.dumps(data)[:300]}")
     return data
+
+
+CITY_ALIASES = {  # Arabic spellings Open-Meteo does not resolve to MA
+    "الرباط": "Rabat", "الرباط المغرب": "Rabat",
+    "أكادير": "Agadir", "الأغادير": "Agadir", "اكادير": "Agadir",
+    "سلا": "Salé", "سلا المغرب": "Salé", "الجديدة": "El Jadida",
+    "خريبكة": "Khouribga", "ميدلت": "Midelt", "بني ملال": "Beni Mellal",
+    "إفران": "Ifrane", "صفرو": "Sefrou", "تازة": "Taza", "الحسيمة": "Al Hoceima",
+    "اقليم": "Province",
+}
+
+
+def _geo_probe(query: str, country_code: str, retries: int, timeout: int) -> list[dict]:
+    params = {"name": query, "count": 20, "language": "ar", "format": "json"}
+    if country_code:
+        params["countryCode"] = country_code
+    url = f"{GEOCODING_API}?{urllib.parse.urlencode(params)}"
+    data = http_json(url, timeout=timeout, retries=retries)
+    return (data or {}).get("results") or []
+
+
+def geocode_city(query: str, retries: int, timeout: int) -> dict:
+    """Resolve a city name to {name, display, lat, lon, tz, admin1, country}.
+
+    Morocco-first: try MA with the raw query and its alias, then MA without a
+    country hint, and only then fall back to any country. Homonyms elsewhere
+    (e.g. arabic "الرباط" is a Yemeni village in Open-Meteo) must not win.
+    """
+    probes = [query]
+    if query in CITY_ALIASES:
+        probes.insert(0, CITY_ALIASES[query])
+    results: list[dict] = []
+
+    for probe in probes:  # MA + alias first
+        try:
+            results = _geo_probe(probe, "MA", retries, timeout)
+        except Exception:
+            results = []
+        if results:
+            break
+    if not results:
+        for probe in probes:  # then any country whose top hit is MA
+            try:
+                results = _geo_probe(probe, "", retries, timeout)
+            except Exception:
+                results = []
+            if results and any((r.get("country_code") or "").upper() == "MA"
+                               for r in results[:3]):
+                break
+            results = []
+    if not results:  # very last resort: first hit anywhere
+        try:
+            results = _geo_probe(query, "", retries, timeout)
+        except Exception:
+            pass
+    if not results:
+        raise RuntimeError(f"no city found for {query!r}")
+    best = next((r for r in results if (r.get("country_code") or "").upper() == "MA"),
+                results[0])
+    r = best
+    return {
+        "name": r.get("name") or query,
+        "display": ", ".join(x for x in (r.get("name"), r.get("admin1"),
+                                         r.get("country")) if x),
+        "lat": r["latitude"], "lon": r["longitude"],
+        "tz": r.get("timezone") or CONFIG["tz"],
+        "admin1": r.get("admin1") or "", "country": r.get("country") or "",
+    }
 
 
 def extract(data: dict) -> dict:
@@ -421,7 +534,7 @@ def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_message(w: dict, data: dict, lang: str) -> str:
+def build_message(w: dict, data: dict, lang: str, place: str | None = None) -> str:
     L = T[lang]
     loc = now_local(CONFIG["tz"])
     cond_key = 1 if lang == "ar" else 2 if lang == "fr" else 3
@@ -432,6 +545,12 @@ def build_message(w: dict, data: dict, lang: str) -> str:
     entry = WMO.get(code_now, WMO.get(int(w["code_daily"] or 0), ("🌡️", "—", "—", "—")))
     emoji, cond = entry[0], entry[cond_key]
     u = L["unit_speed"]
+    place_name = place or CONFIG["place"]
+    if place:
+        base = {"ar": "نشرة الطقس —", "fr": "Bulletin météo —", "en": "Weather bulletin —"}.get(lang, "—")
+        title = f"{base} {esc(place_name)} 🇲🇦" if lang == "ar" else f"{base} {esc(place_name)}"
+    else:
+        title = esc(L['title'])
 
     if loc:
         date_line = f"{L['days'][loc.weekday()]} {loc.day} {L['months'][loc.month - 1]} {loc.year}"
@@ -462,7 +581,7 @@ def build_message(w: dict, data: dict, lang: str) -> str:
     src = (f"{L['source']} (ECMWF·GFS) · {data.get('latitude', CONFIG['lat']):.3f}°N "
            f"{abs(data.get('longitude', CONFIG['lon'])):.3f}°W · {loc.strftime('%H:%M') if loc else ''} {L['sent_at']}"
            ).replace("  ", " ")
-    return (f"{emoji} <b>{esc(L['title'])}</b>\n{esc(date_line)}\n\n"
+    return (f"{emoji} <b>{title}</b>\n{esc(date_line)}\n\n"
             f"{body}\n\n✅ {L['advice']}: {esc(adv)}\n"
             f"<i>{esc(conf)}</i>\n<i>{esc(src)}</i>")
 
@@ -547,6 +666,140 @@ def whoami(token: str, timeout: int, retries: int) -> int:
     print("\n=> prends le chat_id voulu et mets-le dans TELEGRAM_CHAT_ID (.env ou secret GitHub).")
     print("   /start est obligatoire AVANT : sans lui Telegram refuse d'envoyer (403).")
     return 0
+
+
+# --------------------------------------------------------------------------- prayer
+def fetch_prayer(lat: float, lon: float, retries: int, timeout: int) -> dict:
+    """Prayer times by coordinates via Aladhan API (method 15 = Morocco Habous)."""
+    params = {"latitude": lat, "longitude": lon, "method": PRAYER_METHOD}
+    url = f"{PRAYER_API}?{urllib.parse.urlencode(params)}"
+    data = http_json(url, timeout=timeout, retries=retries)
+    if not data.get("data") or data.get("code", 200) != 200:
+        raise RuntimeError(f"unexpected prayer API answer: {json.dumps(data)[:300]}")
+    return data["data"]
+
+
+def build_prayer_message(pd: dict, lang: str, place: str | None = None) -> str:
+    L = T[lang]
+    timings = pd.get("timings", {}) if isinstance(pd.get("timings"), dict) else {}
+    keys = (("Fajr", L["cmd"]["prayer_fajr"], "🌅"),
+            ("Sunrise", L["cmd"]["prayer_sunrise"], "🌄"),
+            ("Dhuhr", L["cmd"]["prayer_dhuhr"], "☀️"),
+            ("Asr", L["cmd"]["prayer_asr"], "🌤️"),
+            ("Maghrib", L["cmd"]["prayer_maghrib"], "🌇"),
+            ("Isha", L["cmd"]["prayer_isha"], "🌙"))
+    rows = [f"{e} {label}: <b>{timings.get(k, '—')}</b>" for k, label, e in keys]
+    loc = now_local(CONFIG["tz"])
+    date_line = ""
+    if loc:
+        date_line = f"{L['days'][loc.weekday()]} {loc.day} {L['months'][loc.month - 1]} {loc.year}"
+    title = f"{L['cmd']['prayer_header']} {esc(place)}</b>" if place else esc(L['cmd']['prayer_header'].rstrip())
+    hijri = pd.get("date", {}).get("hijri") if isinstance(pd.get("date"), dict) else None
+    extra = ""
+    if isinstance(hijri, dict):
+        d, y = hijri.get("day"), hijri.get("year")
+        month = (hijri.get("month") or {}).get("ar") if isinstance(hijri.get("month"), dict) else None
+        if d and y:
+            extra = f"\n📅 {L['cmd']['hijri']} {d} {month or ''} {y}"
+    return (f"{title}\n{esc(date_line)}\n\n" + "\n".join(rows) + extra +
+            f"\n\n<i>{esc(L['cmd']['prayer'])} {esc(place or CONFIG['place'])}</i>")
+
+
+# --------------------------------------------------------------------------- commands
+def handle_text(text: str, lang: str, retries: int, timeout: int) -> str:
+    """Turn a plain chat message into the Arabic reply for the sender."""
+    L = T[lang]
+    t = text.strip()
+    if not t:
+        return L["cmd"]["help"]
+    cmd, _, arg = t.partition(" ")
+    cmd = cmd.lower()
+    arg = arg.strip(" \t.,،؛")
+
+    if cmd in ("/start", "start", "بداية", "البداية"):
+        return L["cmd"]["start"]
+    if cmd in ("/help", "help", "مساعدة", "المساعدة", "اوامر", "الأوامر"):
+        return L["cmd"]["help"]
+    if cmd in ("/hello", "السلام", "سلام", "اهلا", "أهلا", "مرحبا", "مرحباً", "bonjour", "salam", "hi", "salut"):
+        return L["cmd"]["hello"]
+    if cmd in ("شكرا", "شكراً", "merci", "thanks", "thank"):
+        return L["cmd"]["thanks"]
+    if cmd in ("/weather", "weather", "طقس", "الطقس", "مترو", "هو"):
+        return build_city_weather(arg, lang, retries, timeout) if arg else _weather_default(lang, retries, timeout)
+    if cmd in ("/prayer", "prayer", "صلاة", "الصلاة", "الصلوات", "اوقات", "أوقات", "مواقيت", "priere", "prière"):
+        return build_city_prayer(arg, lang, retries, timeout) if arg else _prayer_default(lang, retries, timeout)
+
+    # anything else that looks like a city -> treat as a weather request
+    if "/" not in cmd:
+        return build_city_weather(f"{cmd} {arg}".strip(), lang, retries, timeout)
+    return L["cmd"]["not_found"]
+
+
+def _weather_default(lang: str, retries: int, timeout: int) -> str:
+    return build_city_weather(CONFIG["place"], lang, retries, timeout)
+
+
+def _prayer_default(lang: str, retries: int, timeout: int) -> str:
+    return build_city_prayer(CONFIG["place"], lang, retries, timeout)
+
+
+def build_city_weather(query: str, lang: str, retries: int, timeout: int) -> str:
+    L = T[lang]
+    try:
+        city = geocode_city(query, retries, timeout)
+        data = fetch_weather(lang, retries, timeout, lat=city["lat"], lon=city["lon"], tz=city["tz"])
+        w = extract(data)
+        return build_message(w, data, lang, place=f"{city['name']}")
+    except Exception as e:
+        return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['not_found']}"
+
+
+def build_city_prayer(query: str, lang: str, retries: int, timeout: int) -> str:
+    L = T[lang]
+    try:
+        city = geocode_city(query, retries, timeout)
+        pd = fetch_prayer(city["lat"], city["lon"], retries, timeout)
+        return build_prayer_message(pd, lang, place=f"{city['name']}")
+    except Exception as e:
+        return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['not_found']}"
+
+
+def get_updates_once(token: str, offset: int | None, timeout: int, retries: int) -> list[dict]:
+    params = {"timeout": 25, "limit": 50, "offset": offset} if offset is not None else {
+        "timeout": 25, "limit": 50}
+    url = f"{TELEGRAM_API}/bot{token}/getUpdates?" + urllib.parse.urlencode(params)
+    data = http_json(url, timeout=timeout, retries=retries, secret=token)
+    return data.get("result") or []
+
+
+def poll_bot(token: str, lang: str, retries: int, timeout: int) -> int:
+    """Long-poll Telegram and answer every message, forever."""
+    print("Listening on Telegram... press Ctrl+C to stop.")
+    offset: int | None = None
+    while True:
+        updates: list[dict] = []
+        try:
+            updates = get_updates_once(token, offset, timeout, retries)
+        except Exception as e:
+            print(f"poll error (will retry in 5s): {e}", file=sys.stderr)
+            time.sleep(5)
+            continue
+        for upd in updates:
+            offset = max(offset or 0, (upd.get("update_id") or 0) + 1)
+            msg = upd.get("message") or upd.get("channel_post") or {}
+            chat = msg.get("chat") or {}
+            chat_id = chat.get("id")
+            text = msg.get("text") or ""
+            if chat_id is None or not text.strip():
+                continue
+            try:
+                reply = handle_text(text, lang, retries, timeout)
+            except Exception as e:
+                reply = f"{T[lang]['cmd']['error']} {esc(str(e))[:400]}"
+            try:
+                send_telegram(reply, token, [str(chat_id)], timeout, retries)
+            except Exception as e:
+                print(f"send failed: {e}", file=sys.stderr)
 
 
 # --------------------------------------------------------------------------- modes
@@ -673,7 +926,48 @@ def selftest() -> int:
     except Exception as e:
         check(f"helper crashed: {e!r}", False)
 
-    # 6. getUpdates parser behind --whoami
+    # 6. command dispatch (offline): routing + summaries, no network
+    try:
+        check("cmd /start routes", "بوت" in handle_text("/start", "ar", 1, 5))
+        check("cmd /help routes", "الأوامر" in handle_text("/help", "ar", 1, 5))
+        check("cmd /help generic", "الأوامر" in handle_text("مساعدة", "ar", 1, 5))
+        check("cmd hello", "مرحباً" in handle_text("سلام", "ar", 1, 5))
+        check("cmd thanks", "على الرحب" in handle_text("شكرا", "ar", 1, 5))
+        check("cmd empty -> help", "الأوامر" in handle_text("", "ar", 1, 5))
+        # a bare word that is not a keyword goes through the weather path and
+        # must return a city-not-found styling rather than crashing
+        bad = handle_text("qqzzxx", "ar", 1, 5)
+        check("cmd unknown city handled", "خطأ" in bad or "لم أجد" in bad or "❌" in bad)
+        # known keyword with a city -> network path returns an error message
+        # when the API cannot be reached (retries=1, short timeout), not a crash
+        offline = handle_text("طقس qqzzxx", "ar", 1, 3)
+        check("cmd weather arg routed", ("خطأ" in offline) or ("لم أجد" in offline) or ("❌" in offline))
+    except Exception as e:
+        check(f"command dispatch crashed: {e!r}", False)
+
+    # 6-bis. prayer rendering (offline, synthetic Aladhan payload)
+    pray = {
+        "timings": {"Fajr": "05:12", "Sunrise": "06:32", "Dhuhr": "13:05",
+                    "Asr": "16:40", "Maghrib": "19:20", "Isha": "20:35"},
+        "date": {"hijri": {"day": "11", "year": "1448",
+                           "month": {"ar": "ربيع الأول", "number": 3}}},
+    }
+    pm = build_prayer_message(pray, "ar", "فاس")
+    for needle in ("الفجر", "الظهر", "العشاء", "05:12", "19:20", "فاس", "ربيع الأول"):
+        check(f"prayer renders {needle}", needle in pm)
+    check("prayer tags balanced", pm.count("<b>") == pm.count("</b>"))
+    pm2 = build_prayer_message(pray, "ar")
+    check("prayer without place tolerates", "</b>" in pm2)
+
+    # 6-ter. weather builder honours a custom place and keeps the default title
+    fxw = extract(_fixture())
+    m_city = build_message(fxw, _fixture(), "ar", place="الرباط")
+    check("city place in title", "الرباط" in m_city and "خريبكة" not in m_city)
+    m_def = build_message(fxw, _fixture(), "ar")
+    check("default title kept", "خريبكة" in m_def)
+    check("arbitrary place not double", "الرباط — الرباط" not in m_city)
+
+    # 7. getUpdates parser behind --whoami
     upd = {"ok": True, "result": [
         {"update_id": 1, "message": {"from": {"username": "khouribga_user"},
                                       "text": "/start",
@@ -726,6 +1020,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="list the chat ids this bot can already see, then exit")
     ap.add_argument("--selftest", action="store_true", help="offline sanity checks")
     ap.add_argument("--debug", action="store_true", help="dump raw API json")
+    ap.add_argument("--poll", action="store_true",
+                    help="interactive: answer each Telegram message forever")
+    ap.add_argument("--say", metavar="TEXT",
+                    help="compute the Arabic reply for TEXT and print it (no sending)")
     args = ap.parse_args(argv)
 
     if args.selftest:
@@ -738,10 +1036,22 @@ def main(argv: list[str] | None = None) -> int:
             return 3
         return whoami(tok, int(os.environ.get("HTTP_TIMEOUT", "25")), 2)
 
-    CONFIG["lang"] = args.lang
-    lang = args.lang
     timeout = int(os.environ.get("HTTP_TIMEOUT", "25"))
     retries = int(os.environ.get("RETRIES", "4"))
+
+    if args.say:
+        print(handle_text(args.say, args.lang, retries, timeout))
+        return 0
+
+    if args.poll:
+        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        if not tok:
+            print("ERROR: exporte d'abord TELEGRAM_BOT_TOKEN (voir .env.example)", file=sys.stderr)
+            return 3
+        return poll_bot(tok, args.lang, retries, timeout)
+
+    CONFIG["lang"] = args.lang
+    lang = args.lang
 
     try:
         data = fetch_weather(lang, retries, timeout)
