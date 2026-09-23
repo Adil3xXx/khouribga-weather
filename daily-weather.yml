@@ -1,0 +1,43 @@
+name: Khouribga daily weather -> Telegram
+
+# يعمل كل ساعة، لكن السكربت نفسه يرسل فقط عندما تكون الساعة 7 صباحًا بتوقيت خريبكة.
+# Runs hourly; the script itself sends only when local Khouribga time is 07:xx,
+# so the delivery stays at 07:00 even when Morocco shifts its clock (Ramadan).
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+concurrency:
+  group: daily-weather
+  cancel-in-progress: false
+
+jobs:
+  bulletin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Locate weather_bot.py (repo root or ./khouribga-weather-bot)
+        run: |
+          if [ -f weather_bot.py ]; then echo "SCRIPT=weather_bot.py" >> "$GITHUB_ENV";
+          elif [ -f khouribga-weather-bot/weather_bot.py ]; then echo "SCRIPT=khouribga-weather-bot/weather_bot.py" >> "$GITHUB_ENV";
+          else echo "::error::weather_bot.py not found in the repo" >&2; exit 1; fi
+
+      - name: Send 07:00 bulletin (no-op at other hours)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MESSAGE_LANGUAGE: ar
+        run: python "$SCRIPT" --send --only-at 7
+
+      - name: Notify if the job broke two days running
+        if: failure()
+        run: |
+          echo "::error::weather job failed - check 'gh run list' or run: python weather_bot.py --dry-run"
