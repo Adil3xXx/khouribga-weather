@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 weather.log
+poll_out.txt
+poll_err.txt

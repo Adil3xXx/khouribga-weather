@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import ssl
 import sys
@@ -59,10 +60,15 @@ CONFIG = {
 }
 API = "https://api.open-meteo.com/v1/forecast"
 GEOCODING_API = "https://geocoding-api.open-meteo.com/v1/search"
+GEOCODING_FALLBACK_API = "https://nominatim.openstreetmap.org/search"
+METNO_API = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
 PRAYER_API = "https://api.aladhan.com/v1/timings"
 MODELS = ("best_match", "ecmwf_ifs025", "gfs_seamless")
 TELEGRAM_API = "https://api.telegram.org"
 PRAYER_METHOD = 15  # Aladhan: Ministry of Habous (Morocco)
+PRAYER_FAJR_ANGLE = 18.0   # local fallback, like Habous
+PRAYER_ISHA_ANGLE = 17.0   # local fallback, like Habous
+POLL_LONG_POLL = 50  # Telegram long-poll seconds (keep HTTP timeout above this)
 
 # --------------------------------------------------------------------------- i18n
 T = {
@@ -83,7 +89,7 @@ T = {
         "sunset": "الغروب",
         "advice": "ملاحظة",
         "models": "تقاطع النماذج",
-        "source": "المصدر: Open-Meteo",
+        "source": "المصدر:",
         "sent_at": "الوقت المحلي", "mm": "ملم",
         "unit_speed": "كم/س",
         "ok": "✅ توقع متين — النماذج متفقة",
@@ -142,6 +148,7 @@ T = {
             "prayer_maghrib": "المغرب",
             "prayer_isha": "العشاء",
             "not_found": "❌ لم أجد مدينة بهذا الاسم. تأكد من الإملاء أو جرّب اسماً أقرب (مثال: <code>الدار البيضاء</code> أو <code>Casablanca</code>).",
+            "net_error": "⚠️ لا يمكن الوصول لخوادم الطقس الآن. تحقق من اتصالك بالإنترنت ثم أعد المحاولة بعد قليل.",
             "error": "⚠️ حدث خطأ:",
             "date_line": "التاريخ:",
             "hijri": "التقويم الهجري:",
@@ -153,7 +160,7 @@ T = {
         "cond": "Ciel", "rain": "Risque de pluie", "precip": "Précip. prévue",
         "wind": "Vent", "gust": "Rafales", "humidity": "Humidité",
         "uv": "Indice UV", "sunrise": "Lever", "sunset": "Coucher",
-        "advice": "Conseil", "models": "Modèles", "source": "Source : Open-Meteo",
+        "advice": "Conseil", "models": "Modèles", "source": "Source :",
         "sent_at": "Heure locale", "mm": "mm", "unit_speed": "km/h",
         "ok": "✅ Prévision solide — modèles d'accord",
         "good": "🟡 Bonne confiance — léger écart entre modèles",
@@ -182,7 +189,7 @@ T = {
         "cond": "Sky", "rain": "Rain chance", "precip": "Expected rain",
         "wind": "Wind", "gust": "Gusts", "humidity": "Humidity",
         "uv": "UV index", "sunrise": "Sunrise", "sunset": "Sunset",
-        "advice": "Note", "models": "Models", "source": "Source: Open-Meteo",
+        "advice": "Note", "models": "Models", "source": "Source:",
         "sent_at": "Local time", "mm": "mm", "unit_speed": "km/h",
         "ok": "✅ Reliable — models agree",
         "good": "🟡 Good confidence — small spread between models",
@@ -364,10 +371,114 @@ def fetch_weather(lang: str, retries: int, timeout: int, lat: float | None = Non
         "models": ",".join(MODELS),
     }
     url = f"{API}?{urllib.parse.urlencode(params)}"
-    data = http_json(url, timeout=timeout, retries=retries)
-    if "daily" not in data:
-        raise RuntimeError(f"unexpected API answer: {json.dumps(data)[:300]}")
-    return data
+    r_om, t_om = _probe_budget(retries, timeout)
+    try:
+        data = http_json(url, timeout=t_om, retries=r_om)
+        if "daily" not in data:
+            raise RuntimeError(f"unexpected API answer: {json.dumps(data)[:300]}")
+        return data
+    except Exception as e:
+        fallback = fetch_weather_metno(lat, lon, tz, retries, timeout)
+        if fallback is None:
+            raise
+        fallback["_fallback_of"] = _redact(str(e), None)[:120]
+        return fallback
+
+
+def fetch_weather_metno(lat: float | None, lon: float | None, tz: str | None,
+                        retries: int, timeout: int) -> dict | None:
+    """Fallback weather via api.met.no locationforecast (no key, stable).
+
+    Returns an Open-Meteo-shaped payload when reachable, else None.
+    """
+    rlat = CONFIG["lat"] if lat is None else lat
+    rlon = CONFIG["lon"] if lon is None else lon
+    params = {"lat": rlat, "lon": rlon}
+    url = f"{METNO_API}?{urllib.parse.urlencode(params)}"
+    try:
+        data = http_json(url, timeout=timeout, retries=retries)
+    except Exception:
+        return None
+    series = []
+    for point in (data.get("properties", {}).get("timeseries") or []):
+        ts = point.get("time")
+        inst = (((point.get("data") or {}).get("instant") or {}).get("details")) or {}
+        hour = (((point.get("data") or {}).get("next_1_hours") or {}).get("details")) or {}
+        symbol = (((point.get("data") or {}).get("next_1_hours") or {}).get(
+            "summary") or {}).get("symbol_code") or ""
+        if not inst or not ts:
+            continue
+        try:
+            stemp = float(inst.get("air_temperature"))
+        except (TypeError, ValueError):
+            continue
+        series.append({
+            "time": ts, "temp": stemp,
+            "hum": inst.get("relative_humidity"),
+            "wind": inst.get("wind_speed"), "deg": inst.get("wind_from_direction"),
+            "rain": hour.get("precipitation_amount", 0.0), "sym": symbol,
+        })
+    if not series:
+        return None
+    tmax = max(p["temp"] for p in series)
+    tmin = min(p["temp"] for p in series)
+    rain_sum = sum(float(p["rain"] or 0) for p in series)
+    now = series[0]
+    wind, deg = now["wind"], now["deg"]
+    try:
+        gust = max(float(p["wind"] or 0) for p in series[:6])
+    except Exception:
+        gust = wind
+    code = metno_symbol_code(now["sym"])
+    ris, set_ = sunrise_sunset(rlat, rlon)
+    return {
+        "current": {
+            "temperature_2m": now["temp"], "apparent_temperature": now["temp"],
+            "relative_humidity_2m": now["hum"], "precipitation": now["rain"],
+            "weather_code": code, "wind_speed_10m": wind, "wind_direction_10m": deg,
+        },
+        "daily": {
+            "time": [series[0]["time"][:10]],
+            "temperature_2m_max": [tmax], "temperature_2m_min": [tmin],
+            "apparent_temperature_max": [tmax],
+            "precipitation_probability_max": [100 if rain_sum > 0.1 else 0],
+            "precipitation_sum": [rain_sum],
+            "weather_code": [code],
+            "wind_speed_10m_max": [gust], "wind_direction_10m_dominant": [deg],
+            "sunrise": [ris], "sunset": [set_],
+        },
+        "latitude": rlat, "longitude": rlon, "timezone": CONFIG["tz"] if tz is None else tz,
+        "provider": "met.no",
+    }
+
+
+def sunrise_sunset(lat: float, lon: float) -> tuple[str, str]:
+    """Local sunrise/sunset as HH:MM, computed astronomically (no network)."""
+    times = compute_prayer_times(lat, lon, CONFIG["tz"])
+    if times is None:
+        return "—", "—"
+    return times["timings"].get("Sunrise", "—"), times["timings"].get("Maghrib", "—")
+
+
+def metno_symbol_code(symbol: str) -> int:
+    """Map met.no weather symbol codes to Open-Meteo WMO weather codes."""
+    s = (symbol or "").split("_")[0].lower()
+    if "thunder" in s:
+        return 95
+    if "snowshowers" in s or "sleet" in s:
+        return 79 if "sleet" in s else 85
+    if "snow" in s:
+        return 71 if "light" in s else 75 if "heavy" in s else 73
+    if "showers" in s:
+        if "light" in s:
+            return 80
+        return 82 if "heavy" in s else 81
+    table = {
+        "clearsky": 0, "fair": 1, "partlycloudy": 2, "cloudy": 3, "fog": 45,
+        "drizzle": 51, "freezingrain": 66, "lightrain": 61, "rain": 63,
+        "heavyrain": 65,
+    }
+    return table.get(s, 3)
 
 
 CITY_ALIASES = {  # Arabic spellings Open-Meteo does not resolve to MA
@@ -380,6 +491,12 @@ CITY_ALIASES = {  # Arabic spellings Open-Meteo does not resolve to MA
 }
 
 
+def _probe_budget(retries: int, timeout: int) -> tuple[int, int]:
+    """Fast budget for primary APIs (Open-Meteo/Aladhan): when they are slow or
+    unreachable we want to fall back quickly instead of spending retries*timeout."""
+    return 1, min(timeout, 8)
+
+
 def _geo_probe(query: str, country_code: str, retries: int, timeout: int) -> list[dict]:
     params = {"name": query, "count": 20, "language": "ar", "format": "json"}
     if country_code:
@@ -389,42 +506,85 @@ def _geo_probe(query: str, country_code: str, retries: int, timeout: int) -> lis
     return (data or {}).get("results") or []
 
 
+def _geocode_nominatim(query: str, retries: int, timeout: int) -> dict:
+    """Fallback geocoder: Nominatim (OpenStreetMap), Morocco-city first."""
+    params = {"q": query, "format": "jsonv2", "limit": 5,
+              "accept-language": "ar", "addressdetails": 1}
+    url = f"{GEOCODING_FALLBACK_API}?{urllib.parse.urlencode(params)}"
+    r_nom, t_nom = _probe_budget(retries, timeout)
+    data = http_json(url, timeout=t_nom, retries=r_nom)
+    rows = data if isinstance(data, list) else []
+    if not rows:
+        raise RuntimeError(f"no city found for {query!r}")
+
+    def _is_settlement(r):
+        return ((r.get("addresstype") or r.get("type") or "")).lower() in (
+            "city", "town", "village", "municipality", "suburb", "borough", "county")
+
+    def _cc(r):
+        return (((r.get("address") or {}).get("country_code") or "")).upper()
+
+    ma_settlements = [r for r in rows if _cc(r) == "MA" and _is_settlement(r)]
+    any_settlements = [r for r in rows if _is_settlement(r)]
+    ma_any = [r for r in rows if _cc(r) == "MA"]
+    best = (ma_settlements or any_settlements or ma_any or rows)[0]
+    name = (best.get("display_name") or query).split(",")[0].strip()
+    admin1 = (best.get("address") or {}).get("state") or ""
+    country = (best.get("address") or {}).get("country") or ""
+    return {
+        "name": name,
+        "display": ", ".join(x for x in (name, admin1, country) if x),
+        "lat": float(best["lat"]), "lon": float(best["lon"]),
+        "tz": CONFIG["tz"], "admin1": admin1, "country": country,
+    }
+
+
 def geocode_city(query: str, retries: int, timeout: int) -> dict:
     """Resolve a city name to {name, display, lat, lon, tz, admin1, country}.
 
     Morocco-first: try MA with the raw query and its alias, then MA without a
     country hint, and only then fall back to any country. Homonyms elsewhere
     (e.g. arabic "الرباط" is a Yemeni village in Open-Meteo) must not win.
+    Falls back to Nominatim when the primary geocoder is unreachable.
     """
     probes = [query]
     if query in CITY_ALIASES:
         probes.insert(0, CITY_ALIASES[query])
     results: list[dict] = []
+    geo_error: Exception | None = None
+    r_geo, t_geo = _probe_budget(retries, timeout)
 
     for probe in probes:  # MA + alias first
         try:
-            results = _geo_probe(probe, "MA", retries, timeout)
-        except Exception:
+            results = _geo_probe(probe, "MA", r_geo, t_geo)
+        except Exception as e:
             results = []
+            geo_error = e
+            break  # primary geocoder down -> stop probing, use Nominatim
         if results:
             break
-    if not results:
+    if not results and geo_error is None:
         for probe in probes:  # then any country whose top hit is MA
             try:
-                results = _geo_probe(probe, "", retries, timeout)
-            except Exception:
+                results = _geo_probe(probe, "", r_geo, t_geo)
+            except Exception as e:
                 results = []
+                geo_error = e
+                break
             if results and any((r.get("country_code") or "").upper() == "MA"
                                for r in results[:3]):
                 break
             results = []
-    if not results:  # very last resort: first hit anywhere
+    if not results and geo_error is None:  # very last resort: first hit anywhere
         try:
-            results = _geo_probe(query, "", retries, timeout)
-        except Exception:
-            pass
+            results = _geo_probe(query, "", r_geo, t_geo)
+        except Exception as e:
+            geo_error = e
     if not results:
-        raise RuntimeError(f"no city found for {query!r}")
+        try:  # primary geocoder failed/empty -> Nominatim
+            return _geocode_nominatim(query, retries, timeout)
+        except Exception as e2:
+            raise RuntimeError(f"{geo_error}; nominatim: {e2}") if geo_error else e2
     best = next((r for r in results if (r.get("country_code") or "").upper() == "MA"),
                 results[0])
     r = best
@@ -480,7 +640,11 @@ def extract(data: dict) -> dict:
 
 
 def confidence(w: dict) -> tuple[str, str]:
-    """Return (key, detail) where key is 'ok' | 'good' | 'warn'."""
+    """Return (key, detail) where key is 'ok' | 'good' | 'warn'.
+
+    With a single model (e.g. met.no fallback) there is no spread, so report
+    'good' with no detail rather than pretending several models were used.
+    """
     spread = 0.0
     detail = ""
     if len(w["tmax_models"]) >= 2:
@@ -488,11 +652,13 @@ def confidence(w: dict) -> tuple[str, str]:
         detail = f"Δ{spread:.1f}°"
     rmax = max(w["rain_models"]) if w["rain_models"] else 0.0
     rmin = min(w["rain_models"]) if w["rain_models"] else 0.0
-    if spread and spread <= 0.8 and (rmax - rmin) <= 0.5:
+    if not spread:
+        return "good", ""
+    if spread <= 0.8 and (rmax - rmin) <= 0.5:
         return "ok", detail
-    if spread and spread <= 1.8 and (rmax - rmin) <= 1.5:
+    if spread <= 1.8 and (rmax - rmin) <= 1.5:
         return "good", detail
-    return ("warn", detail) if spread else ("good", detail)
+    return "warn", detail
 
 
 def advices(w: dict, lang: str) -> list[str]:
@@ -577,13 +743,20 @@ def build_message(w: dict, data: dict, lang: str, place: str | None = None) -> s
         for label, val, note in rows
     )
     adv = " ".join(advices(w, lang))
-    conf = f"{L['models']}: {L[conf_key]}" + (f" · {conf_detail}" if conf_detail else "")
-    src = (f"{L['source']} (ECMWF·GFS) · {data.get('latitude', CONFIG['lat']):.3f}°N "
+    is_metno = data.get("provider") == "met.no"
+    if is_metno:
+        conf_line = ""
+    else:
+        conf_key, conf_detail = confidence(w)
+        conf_line = f"{L['models']}: {L[conf_key]}" + (f" · {conf_detail}" if conf_detail else "")
+    prov = "met.no" if is_metno else "Open-Meteo (ECMWF·GFS)"
+    src = (f"{L['source']} {prov} · {data.get('latitude', CONFIG['lat']):.3f}°N "
            f"{abs(data.get('longitude', CONFIG['lon'])):.3f}°W · {loc.strftime('%H:%M') if loc else ''} {L['sent_at']}"
            ).replace("  ", " ")
     return (f"{emoji} <b>{title}</b>\n{esc(date_line)}\n\n"
             f"{body}\n\n✅ {L['advice']}: {esc(adv)}\n"
-            f"<i>{esc(conf)}</i>\n<i>{esc(src)}</i>")
+            f"{('<i>' + esc(conf_line) + '</i>\n') if conf_line else ''}"
+            f"<i>{esc(src)}</i>")
 
 
 # --------------------------------------------------------------------------- telegram
@@ -669,14 +842,101 @@ def whoami(token: str, timeout: int, retries: int) -> int:
 
 
 # --------------------------------------------------------------------------- prayer
-def fetch_prayer(lat: float, lon: float, retries: int, timeout: int) -> dict:
-    """Prayer times by coordinates via Aladhan API (method 15 = Morocco Habous)."""
+def fetch_prayer(lat: float, lon: float, retries: int, timeout: int,
+                 timezone: str | None = None) -> dict:
+    """Prayer times by coordinates via Aladhan API (method 15 = Morocco Habous).
+
+    If the API is unreachable, fall back to a local astronomical calculation
+    (Ministry-of-Habous-like angles). `computed` marks the fallback so the
+    renderer can add a footnote.
+    """
     params = {"latitude": lat, "longitude": lon, "method": PRAYER_METHOD}
     url = f"{PRAYER_API}?{urllib.parse.urlencode(params)}"
-    data = http_json(url, timeout=timeout, retries=retries)
-    if not data.get("data") or data.get("code", 200) != 200:
-        raise RuntimeError(f"unexpected prayer API answer: {json.dumps(data)[:300]}")
-    return data["data"]
+    r_pr, t_pr = _probe_budget(retries, timeout)
+    try:
+        data = http_json(url, timeout=t_pr, retries=r_pr)
+        if not data.get("data") or data.get("code", 200) != 200:
+            raise RuntimeError(f"unexpected prayer API answer: {json.dumps(data)[:300]}")
+        return data["data"]
+    except Exception:
+        local = compute_prayer_times(lat, lon, timezone=timezone or CONFIG["tz"])
+        if local is None:
+            raise
+        return local
+
+
+def compute_prayer_times(lat: float, lon: float, timezone: str) -> dict | None:
+    """Local astronomical prayer times (angles ~ Morocco Habous method).
+
+    Returns an Aladhan-shaped payload — {"timings": {...}, "computed": True} —
+    or None when date/timezone are unavailable.
+    """
+    loc = now_local(timezone)
+    if loc is None:
+        return None
+    utc_offset = loc.utcoffset()
+    if utc_offset is None:
+        return None
+    tz_hours = utc_offset.total_seconds() / 3600.0
+
+    deg = math.pi / 180
+
+    def _fix_hour(a):
+        return a - 24 * math.floor(a / 24)
+
+    def _julian(y, m, dd):
+        if m <= 2:
+            y -= 1
+            m += 12
+        a = y // 100
+        b = 2 - a + a // 4
+        return (int(365.25 * (y + 4716)) + int(30.6001 * (m + 1)) + dd + b - 1524.5)
+
+    jd = _julian(loc.year, loc.month, loc.day)
+
+    def _sun_pos(hr):
+        d = jd + hr / 24.0 - 2451545.0
+        g = (357.529 + 0.98560028 * d) % 360
+        q = (280.459 + 0.98564736 * d) % 360
+        l = (q + 1.915 * math.sin(g * deg) + 0.020 * math.sin(2 * g * deg)) % 360
+        e = 23.439 - 0.00000036 * d
+        ra = _fix_hour(math.degrees(math.atan2(math.cos(e * deg) * math.sin(l * deg),
+                                               math.cos(l * deg))) / 15)
+        return math.asin(math.sin(e * deg) * math.sin(l * deg)), q / 15 - ra
+
+    def _hour_angle(angle, dec):
+        c = (math.cos(angle * deg) - math.sin(lat * deg) * math.sin(dec)) / (
+            math.cos(lat * deg) * math.cos(dec))
+        if c > 1:
+            return 0.0
+        if c < -1:
+            return 180.0
+        return math.degrees(math.acos(c))
+
+    def _solar(angle, horizon_dir, ref_hr):
+        dec, _ = _sun_pos(ref_hr)
+        return noon + horizon_dir * _hour_angle(angle, dec) / 15.0
+
+    _, eqt = _sun_pos(12.0)
+    noon = 12 - eqt - lon / 15.0
+    dec, _ = _sun_pos(noon)
+    asr_angle = 90 - math.degrees(math.atan(1.0 / (math.tan(abs(lat - math.degrees(dec)) * deg) + 1)))
+    raw = {
+        "Fajr": _solar(90 + PRAYER_FAJR_ANGLE, -1, 5),
+        "Sunrise": _solar(90.833, -1, 6),
+        "Dhuhr": noon,
+        "Asr": _solar(asr_angle, 1, noon),
+        "Maghrib": _solar(90.833, 1, 18),
+        "Isha": _solar(90 + PRAYER_ISHA_ANGLE, 1, 20),
+    }
+    timings = {}
+    for k, v in raw.items():
+        v = _fix_hour(v + tz_hours)
+        hh, mm = int(v), int(round((v - int(v)) * 60))
+        if mm == 60:
+            hh, mm = hh + 1, 0
+        timings[k] = f"{hh % 24:02d}:{mm:02d}"
+    return {"timings": timings, "computed": True}
 
 
 def build_prayer_message(pd: dict, lang: str, place: str | None = None) -> str:
@@ -702,7 +962,8 @@ def build_prayer_message(pd: dict, lang: str, place: str | None = None) -> str:
         if d and y:
             extra = f"\n📅 {L['cmd']['hijri']} {d} {month or ''} {y}"
     return (f"{title}\n{esc(date_line)}\n\n" + "\n".join(rows) + extra +
-            f"\n\n<i>{esc(L['cmd']['prayer'])} {esc(place or CONFIG['place'])}</i>")
+            f"\n\n<i>{esc(L['cmd']['prayer'])} {esc(place or CONFIG['place'])}</i>" +
+            ("\n<i>الحساب المحلي (خوادم الصلاة غير متاحة الآن)</i>" if pd.get("computed") else ""))
 
 
 # --------------------------------------------------------------------------- commands
@@ -751,22 +1012,26 @@ def build_city_weather(query: str, lang: str, retries: int, timeout: int) -> str
         w = extract(data)
         return build_message(w, data, lang, place=f"{city['name']}")
     except Exception as e:
-        return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['not_found']}"
+        if "no city found" in str(e):
+            return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['not_found']}"
+        return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['net_error']}"
 
 
 def build_city_prayer(query: str, lang: str, retries: int, timeout: int) -> str:
     L = T[lang]
     try:
         city = geocode_city(query, retries, timeout)
-        pd = fetch_prayer(city["lat"], city["lon"], retries, timeout)
+        pd = fetch_prayer(city["lat"], city["lon"], retries, timeout, timezone=city["tz"])
         return build_prayer_message(pd, lang, place=f"{city['name']}")
     except Exception as e:
-        return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['not_found']}"
+        if "no city found" in str(e):
+            return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['not_found']}"
+        return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['net_error']}"
 
 
 def get_updates_once(token: str, offset: int | None, timeout: int, retries: int) -> list[dict]:
-    params = {"timeout": 25, "limit": 50, "offset": offset} if offset is not None else {
-        "timeout": 25, "limit": 50}
+    params = {"timeout": POLL_LONG_POLL, "limit": 50, "offset": offset} if offset is not None else {
+        "timeout": POLL_LONG_POLL, "limit": 50}
     url = f"{TELEGRAM_API}/bot{token}/getUpdates?" + urllib.parse.urlencode(params)
     data = http_json(url, timeout=timeout, retries=retries, secret=token)
     return data.get("result") or []
@@ -779,7 +1044,7 @@ def poll_bot(token: str, lang: str, retries: int, timeout: int) -> int:
     while True:
         updates: list[dict] = []
         try:
-            updates = get_updates_once(token, offset, timeout, retries)
+            updates = get_updates_once(token, offset, max(timeout, POLL_LONG_POLL + 15), 1)
         except Exception as e:
             print(f"poll error (will retry in 5s): {e}", file=sys.stderr)
             time.sleep(5)
@@ -958,6 +1223,19 @@ def selftest() -> int:
     check("prayer tags balanced", pm.count("<b>") == pm.count("</b>"))
     pm2 = build_prayer_message(pray, "ar")
     check("prayer without place tolerates", "</b>" in pm2)
+
+    # 6-ter-bis. computed-prayer footnote (local fallback) appears only when flagged
+    pm3 = build_prayer_message({**pray, "computed": True}, "ar", "الدار البيضاء")
+    check("computed prayer footnote", "الحساب المحلي" in pm3)
+    check("computed prayer no notfound", "لم أجد" not in pm3)
+
+    # 6-quad. fallback providers (offline/deterministic)
+    check("metno clearsky maps to code 0", metno_symbol_code("clearsky_day") == 0)
+    check("metno thunderstorm maps to 95", metno_symbol_code("lightrainshowersandthunder") == 95)
+    check("metno unknown maps to cloudy 3", metno_symbol_code("hlafoobar") == 3)
+    sr, ss = sunrise_sunset(34.01325, -6.83255)
+    check("sunrise/sunset computed HH:MM",
+          ("20" in sr[:2] or "06" in sr[:2]) and ":" in sr and ":" in ss)
 
     # 6-ter. weather builder honours a custom place and keeps the default title
     fxw = extract(_fixture())
