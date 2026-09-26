@@ -65,7 +65,7 @@ METNO_API = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
 PRAYER_API = "https://api.aladhan.com/v1/timings"
 MODELS = ("best_match", "ecmwf_ifs025", "gfs_seamless")
 TELEGRAM_API = "https://api.telegram.org"
-PRAYER_METHOD = 15  # Aladhan: Ministry of Habous (Morocco)
+PRAYER_METHOD = 21  # Aladhan: Ministry of Habous (Morocco)  [21, NOT 15]
 PRAYER_FAJR_ANGLE = 18.0   # local fallback, like Habous
 PRAYER_ISHA_ANGLE = 17.0   # local fallback, like Habous
 POLL_LONG_POLL = 50  # Telegram long-poll seconds (keep HTTP timeout above this)
@@ -939,7 +939,8 @@ def compute_prayer_times(lat: float, lon: float, timezone: str) -> dict | None:
     return {"timings": timings, "computed": True}
 
 
-def build_prayer_message(pd: dict, lang: str, place: str | None = None) -> str:
+def build_prayer_message(pd: dict, lang: str, place: str | None = None,
+                         coords: tuple[float, float] | None = None) -> str:
     L = T[lang]
     timings = pd.get("timings", {}) if isinstance(pd.get("timings"), dict) else {}
     keys = (("Fajr", L["cmd"]["prayer_fajr"], "🌅"),
@@ -961,7 +962,13 @@ def build_prayer_message(pd: dict, lang: str, place: str | None = None) -> str:
         month = (hijri.get("month") or {}).get("ar") if isinstance(hijri.get("month"), dict) else None
         if d and y:
             extra = f"\n📅 {L['cmd']['hijri']} {d} {month or ''} {y}"
-    return (f"{title}\n{esc(date_line)}\n\n" + "\n".join(rows) + extra +
+    coords_line = ""
+    if coords:
+        lat, lon = coords
+        ns = "S" if lat < 0 else "N"
+        ew = "W" if lon < 0 else "E"
+        coords_line = f"\n📍 <b>{abs(lat):.3f}°{ns} {abs(lon):.3f}°{ew}</b>"
+    return (f"{title}\n{esc(date_line)}\n\n" + "\n".join(rows) + extra + coords_line +
             f"\n\n<i>{esc(L['cmd']['prayer'])} {esc(place or CONFIG['place'])}</i>" +
             ("\n<i>الحساب المحلي (خوادم الصلاة غير متاحة الآن)</i>" if pd.get("computed") else ""))
 
@@ -1022,7 +1029,8 @@ def build_city_prayer(query: str, lang: str, retries: int, timeout: int) -> str:
     try:
         city = geocode_city(query, retries, timeout)
         pd = fetch_prayer(city["lat"], city["lon"], retries, timeout, timezone=city["tz"])
-        return build_prayer_message(pd, lang, place=f"{city['name']}")
+        return build_prayer_message(pd, lang, place=f"{city['name']}",
+                                    coords=(city["lat"], city["lon"]))
     except Exception as e:
         if "no city found" in str(e):
             return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['not_found']}"
@@ -1228,6 +1236,14 @@ def selftest() -> int:
     pm3 = build_prayer_message({**pray, "computed": True}, "ar", "الدار البيضاء")
     check("computed prayer footnote", "الحساب المحلي" in pm3)
     check("computed prayer no notfound", "لم أجد" not in pm3)
+
+    # 6-ter-ter. prayer message shows the city coordinates when provided
+    pm4 = build_prayer_message(pray, "ar", "الرباط", coords=(34.0132, -6.8326))
+    check("prayer coords latitude N", "34.013°N" in pm4)
+    check("prayer coords longitude W", "6.833°W" in pm4)
+    check("prayer coords emoji", "📍" in pm4)
+    pm4b = build_prayer_message(pray, "ar", "سيدني", coords=(-33.8688, 151.2093))
+    check("prayer coords southern/eastern", "33.869°S" in pm4b and "151.209°E" in pm4b)
 
     # 6-quad. fallback providers (offline/deterministic)
     check("metno clearsky maps to code 0", metno_symbol_code("clearsky_day") == 0)
