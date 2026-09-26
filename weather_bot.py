@@ -1419,8 +1419,14 @@ def selftest() -> int:
     check("metno thunderstorm maps to 95", metno_symbol_code("lightrainshowersandthunder") == 95)
     check("metno unknown maps to cloudy 3", metno_symbol_code("hlafoobar") == 3)
     sr, ss = sunrise_sunset(34.01325, -6.83255)
-    check("sunrise/sunset computed HH:MM",
-          ("20" in sr[:2] or "06" in sr[:2]) and ":" in sr and ":" in ss)
+
+    def hhmm(x: str) -> bool:
+        return (len(x) == 5 and x[2] == ":" and x[:2].isdigit() and x[3:].isdigit()
+                and 0 <= int(x[:2]) <= 24 and 0 <= int(x[3:]) <= 59)
+
+    check("sunrise/sunset computed HH:MM", hhmm(sr) and hhmm(ss))
+    check("sunrise earlier than sunset",
+          int(sr[:2]) * 60 + int(sr[3:]) < int(ss[:2]) * 60 + int(ss[3:]))
 
     # 6-ter. weather builder honours a custom place and keeps the default title
     fxw = extract(_fixture())
