@@ -1155,12 +1155,54 @@ def get_updates_once(token: str, offset: int | None, timeout: int, retries: int)
     return data.get("result") or []
 
 
+def _confirm_queued(token: str, timeout: int) -> int | None:
+    """Acknowledge every pending update without answering, return latest offset.
+
+    Telegram only confirms updates once a getUpdates call passes an offset
+    higher than their id. Without this, a fresh poll (or one that lost its
+    offset file) would replay the whole history one slow message at a time.
+    """
+    cursor = 0
+    for _ in range(200):
+        batch = get_updates_once(token, cursor, min(timeout, 8), 1)
+        if not batch:
+            break
+        cursor = max(cursor, max((u.get("update_id") or 0) for u in batch) + 1)
+        if len(batch) < 50:
+            break
+    return cursor or None
+
+
+def _answer_in_background(text: str, lang: str, chat_id: str, token: str,
+                          retries: int, timeout: int) -> None:
+    try:
+        reply = handle_text(text, lang, retries, timeout)
+    except Exception as e:
+        reply = f"{T[lang]['cmd']['error']} {esc(str(e))[:400]}"
+    try:
+        send_telegram(reply, token, [chat_id], timeout, retries)
+    except Exception as e:
+        print(f"send failed: {e}", file=sys.stderr)
+
+
 def poll_bot(token: str, lang: str, retries: int, timeout: int) -> int:
     """Long-poll Telegram and answer every message, forever."""
     print("Listening on Telegram... press Ctrl+C to stop.")
     offset: int | None = load_offset()
     if offset:
         print(f"resuming poll from update offset {offset}")
+    else:
+        try:
+            caught = _confirm_queued(token, max(timeout, POLL_LONG_POLL + 15))
+        except Exception as e:
+            caught = None
+            print(f"startup catch-up skipped: {e}", file=sys.stderr)
+        if caught:
+            offset = caught
+            save_offset(offset)
+            print(f"confirmed {caught} old queued updates without replying")
+    from concurrent.futures import ThreadPoolExecutor
+    pool = ThreadPoolExecutor(max_workers=3)
     errors = 0
     while True:
         updates: list[dict] = []
@@ -1181,14 +1223,8 @@ def poll_bot(token: str, lang: str, retries: int, timeout: int) -> int:
             text = msg.get("text") or ""
             if chat_id is None or not text.strip():
                 continue
-            try:
-                reply = handle_text(text, lang, retries, timeout)
-            except Exception as e:
-                reply = f"{T[lang]['cmd']['error']} {esc(str(e))[:400]}"
-            try:
-                send_telegram(reply, token, [str(chat_id)], timeout, retries)
-            except Exception as e:
-                print(f"send failed: {e}", file=sys.stderr)
+            pool.submit(_answer_in_background, text, lang, str(chat_id),
+                        token, retries, timeout)
 
 
 # --------------------------------------------------------------------------- modes
