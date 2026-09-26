@@ -1127,8 +1127,14 @@ def build_city_prayer(query: str, lang: str, retries: int, timeout: int) -> str:
 
 
 def offset_state_path() -> Path:
-    """Bot-local JSON file that remembers the last getUpdates offset."""
-    return Path(__file__).resolve().parent / "poll_offset.json"
+    """Bot-local JSON file that remembers the last getUpdates offset.
+
+    An external cache (e.g. a GitHub Actions cache dir) can override the
+    location with POLL_OFFSET_PATH so the offset survives across ephemeral
+    runner checkouts.
+    """
+    custom = os.environ.get("POLL_OFFSET_PATH", "").strip()
+    return Path(custom) if custom else Path(__file__).resolve().parent / "poll_offset.json"
 
 
 def load_offset() -> int | None:
@@ -1147,9 +1153,12 @@ def save_offset(offset: int) -> None:
         pass  # best effort only: worst case we re-read a few old updates
 
 
-def get_updates_once(token: str, offset: int | None, timeout: int, retries: int) -> list[dict]:
-    params = {"timeout": POLL_LONG_POLL, "limit": 50, "offset": offset} if offset is not None else {
-        "timeout": POLL_LONG_POLL, "limit": 50}
+def get_updates_once(token: str, offset: int | None, timeout: int, retries: int,
+                     long_poll: int | None = None) -> list[dict]:
+    lp = POLL_LONG_POLL if long_poll is None else long_poll
+    params = {"timeout": lp, "limit": 50}
+    if offset is not None:
+        params["offset"] = offset
     url = f"{TELEGRAM_API}/bot{token}/getUpdates?" + urllib.parse.urlencode(params)
     data = http_json(url, timeout=timeout, retries=retries, secret=token)
     return data.get("result") or []
@@ -1183,6 +1192,47 @@ def _answer_in_background(text: str, lang: str, chat_id: str, token: str,
         send_telegram(reply, token, [chat_id], timeout, retries)
     except Exception as e:
         print(f"send failed: {e}", file=sys.stderr)
+
+
+def poll_once(token: str, lang: str, retries: int, timeout: int) -> int:
+    """Answer every pending Telegram message in one batch, then exit.
+
+    For short-lived hosts (GitHub Actions cron) that cannot keep a process
+    alive: drain the getUpdates queue a batch at a time, replying and
+    confirming each update so it is never re-delivered.
+    """
+    offset: int | None = load_offset()
+    answered = 0
+    while True:
+        try:
+            updates = get_updates_once(token, offset, min(timeout, 10), 1, long_poll=1)
+        except Exception as e:
+            print(f"poll-once error: {e}", file=sys.stderr)
+            break
+        if not updates:
+            break
+        for upd in updates:
+            offset = max(offset or 0, (upd.get("update_id") or 0) + 1)
+            save_offset(offset)
+            msg = upd.get("message") or upd.get("channel_post") or {}
+            chat = msg.get("chat") or {}
+            chat_id = chat.get("id")
+            text = msg.get("text") or ""
+            if chat_id is None or not text.strip():
+                continue
+            try:
+                reply = handle_text(text, lang, retries, timeout)
+            except Exception as e:
+                reply = f"{T[lang]['cmd']['error']} {esc(str(e))[:400]}"
+            try:
+                send_telegram(reply, token, [str(chat_id)], timeout, retries)
+                answered += 1
+            except Exception as e:
+                print(f"send failed: {e}", file=sys.stderr)
+        if len(updates) < 50:
+            break
+    print(f"poll-once done: {answered} reply/replies sent")
+    return 0
 
 
 def poll_bot(token: str, lang: str, retries: int, timeout: int) -> int:
@@ -1491,6 +1541,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--debug", action="store_true", help="dump raw API json")
     ap.add_argument("--poll", action="store_true",
                     help="interactive: answer each Telegram message forever")
+    ap.add_argument("--poll-once", action="store_true",
+                    help="answer all pending Telegram messages in one batch, then exit")
     ap.add_argument("--say", metavar="TEXT",
                     help="compute the Arabic reply for TEXT and print it (no sending)")
     args = ap.parse_args(argv)
@@ -1519,6 +1571,13 @@ def main(argv: list[str] | None = None) -> int:
             print("ERROR: exporte d'abord TELEGRAM_BOT_TOKEN (voir .env.example)", file=sys.stderr)
             return 3
         return poll_bot(tok, args.lang, retries, timeout)
+
+    if args.poll_once:
+        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        if not tok:
+            print("ERROR: exporte d'abord TELEGRAM_BOT_TOKEN (voir .env.example)", file=sys.stderr)
+            return 3
+        return poll_once(tok, args.lang, retries, timeout)
 
     if args.only_at is not None and now_local(CONFIG["tz"]).hour != args.only_at:
         print(f"skipped: local hour {now_local(CONFIG['tz']).hour} != {args.only_at}")

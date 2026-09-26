@@ -1,0 +1,45 @@
+name: Bot interactif -> Telegram
+
+# Runs every 5 minutes (min supported by GitHub); the script drains all
+# pending Telegram updates in one batch and replies to each in Arabic.
+# The getUpdates offset is persisted through the Actions cache so messages
+# are answered exactly once.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+concurrency:
+  group: poll-once
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: python -m pip install --quiet -r requirements.txt
+
+      - name: Restore poll offset from cache
+        uses: actions/cache@v4
+        with:
+          path: poll_offset_state.json
+          key: poll-offset-${{ github.ref }}
+
+      - name: Answer pending messages
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          MESSAGE_LANGUAGE: ar
+          HTTP_TIMEOUT: "25"
+          RETRIES: "3"
+          POLL_OFFSET_PATH: poll_offset_state.json
+        run: python weather_bot.py --poll-once
