@@ -4,3 +4,4 @@ __pycache__/
 weather.log
 poll_out.txt
 poll_err.txt
+poll_offset.json

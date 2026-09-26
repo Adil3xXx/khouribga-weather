@@ -54,7 +54,6 @@ CONFIG = {
     "lat": 32.88108,
     "lon": -6.90630,
     "place": "خريبكة",
-    "place_latin": "Khouribga, Khouribga Province, Morocco",
     "tz": "Africa/Casablanca",
     "lang": "ar",
 }
@@ -134,12 +133,9 @@ T = {
                 "👨‍💻 <code>/help</code> — هذه القائمة\n\n"
                 "مثال: <code>صلاة مراكش</code> أو <code>/طقس الرباط</code>"
             ),
-            "welcome": "أهلاً! جرب مثلاً: <code>صلاة فاس</code> أو <code>/طقس طنجة</code>",
             "hello": "مرحباً بك يا عزيزي! 👋 كيف أستطيع المساعدة؟ جرب <code>/help</code>",
             "thanks": "على الرحب والسعة! 😊 جرب تسألني عن أي مدينة أخرى 🌍",
-            "weather": "🌦️ الطقس في مدينة",
             "prayer": "🕌 أوقات الصلاة في",
-            "weather_header": "🌦️ <b>نشرة الطقس —",
             "prayer_header": "🕌 <b>أوقات الصلاة —",
             "prayer_fajr": "الفجر",
             "prayer_sunrise": "الشروق",
@@ -150,7 +146,6 @@ T = {
             "not_found": "❌ لم أجد مدينة بهذا الاسم. تأكد من الإملاء أو جرّب اسماً أقرب (مثال: <code>الدار البيضاء</code> أو <code>Casablanca</code>).",
             "net_error": "⚠️ لا يمكن الوصول لخوادم الطقس الآن. تحقق من اتصالك بالإنترنت ثم أعد المحاولة بعد قليل.",
             "error": "⚠️ حدث خطأ:",
-            "date_line": "التاريخ:",
             "hijri": "التقويم الهجري:",
         },
     },
@@ -182,6 +177,37 @@ T = {
             "fog": "Brouillard matinal : prudence avant le lever du soleil.",
             "nice": "Temps agréable, idéal pour le travail et le sport en extérieur.",
         },
+        "cmd": {
+            "start": (
+                "👋 Bienvenue sur <b>Bot météo & prières</b> 🌤️🕌\n\n"
+                "Envoie le nom d'une ville pour recevoir le bulletin météo 🌦️\n"
+                "Ou utilise ces commandes :\n\n"
+                "🌦️ <code>/طقس خريبكة</code> — météo\n"
+                "🕌 <code>صلاة الدار البيضاء</code> — heures de prière\n"
+                "❓ <code>/help</code> — toutes les commandes\n\n"
+            ),
+            "help": (
+                "📖 <b>Commandes disponibles</b>\n\n"
+                "🌦️ <code>/طقس &lt;ville&gt;</code>\n    météo du jour\n"
+                "🕌 <code>صلاة &lt;ville&gt;</code>\n    heures des 5 prières\n"
+                "🌤️ <code>/طقس</code> sans ville\n    météo à Khouribga (défaut)\n"
+                "🕌 <code>صلاة</code> sans ville\n    prières à Khouribga\n"
+                "🏠 <code>/start</code> — bienvenue\n"
+                "👋 <code>سلام</code> — salutation\n"
+                "👨‍💻 <code>/help</code> — cette liste\n\n"
+                "Exemple : <code>صلاة مراكش</code> ou <code>/طقس الرباط</code>"
+            ),
+            "hello": "Bienvenue ! 👋 Comment puis-je t'aider ? Essaie <code>/help</code>",
+            "thanks": "Avec plaisir ! 😊 Demande-moi pour une autre ville 🌍",
+            "prayer": "🕌 Heures de prière à",
+            "prayer_header": "🕌 <b>Heures de prière —",
+            "prayer_fajr": "Fajr", "prayer_sunrise": "Lever du soleil", "prayer_dhuhr": "Dhuhr",
+            "prayer_asr": "Asr", "prayer_maghrib": "Maghrib", "prayer_isha": "Isha",
+            "not_found": "❌ Ville introuvable. Vérifie l'orthographe ou essaie un nom plus proche (ex : <code>الدار البيضاء</code> ou <code>Casablanca</code>).",
+            "net_error": "⚠️ Serveurs météo injoignables pour l'instant. Vérifie ta connexion et réessaie.",
+            "error": "⚠️ Erreur :",
+            "hijri": "Calendrier hégirien :",
+        },
     },
     "en": {
         "title": "Daily weather bulletin — Khouribga 🇲🇦",
@@ -211,6 +237,37 @@ T = {
             "fog": "Morning fog — careful driving before sunrise.",
             "nice": "Pleasant weather, good for outdoor work and sports.",
         },
+        "cmd": {
+            "start": (
+                "👋 Welcome to <b>Weather & Prayer bot</b> 🌤️🕌\n\n"
+                "Send a city name and I'll reply with the weather 🌦️\n"
+                "Or use these commands :\n\n"
+                "🌦️ <code>/طقس خريبكة</code> — weather\n"
+                "🕌 <code>صلاة الدار البيضاء</code> — prayer times\n"
+                "❓ <code>/help</code> — all commands\n\n"
+            ),
+            "help": (
+                "📖 <b>Available commands</b>\n\n"
+                "🌦️ <code>/طقس &lt;city&gt;</code>\n    today's weather\n"
+                "🕌 <code>صلاة &lt;city&gt;</code>\n    times of the 5 prayers\n"
+                "🌤️ <code>/طقس</code> no city\n    weather in Khouribga (default)\n"
+                "🕌 <code>صلاة</code> no city\n    prayers in Khouribga\n"
+                "🏠 <code>/start</code> — welcome\n"
+                "👋 <code>سلام</code> — greeting\n"
+                "👨‍💻 <code>/help</code> — this list\n\n"
+                "Example : <code>صلاة مراكش</code> or <code>/طقس الرباط</code>"
+            ),
+            "hello": "Welcome! 👋 How can I help? Try <code>/help</code>",
+            "thanks": "You're welcome! 😊 Ask me about another city 🌍",
+            "prayer": "🕌 Prayer times in",
+            "prayer_header": "🕌 <b>Prayer times —",
+            "prayer_fajr": "Fajr", "prayer_sunrise": "Sunrise", "prayer_dhuhr": "Dhuhr",
+            "prayer_asr": "Asr", "prayer_maghrib": "Maghrib", "prayer_isha": "Isha",
+            "not_found": "❌ City not found. Check the spelling or try a closer name (e.g. <code>الدار البيضاء</code> or <code>Casablanca</code>).",
+            "net_error": "⚠️ Weather servers unreachable right now. Check your connection and retry.",
+            "error": "⚠️ Error:",
+            "hijri": "Hijri calendar:",
+        },
     },
 }
 
@@ -235,6 +292,7 @@ WMO = {  # code -> (emoji, ar, fr, en)
     73: ("🌨️", "ثلج", "Neige", "Snow"),
     75: ("❄️", "ثلج غزير", "Neige forte", "Heavy snow"),
     77: ("🌨️", "حبّات ثلجية", "Grésil", "Snow grains"),
+    79: ("🌧️", "مطر وثلج", "Pluie et neige", "Rain and snow"),
     80: ("🌦️", "زخات خفيفة", "Averses faibles", "Light showers"),
     81: ("🌧️", "زخات", "Averses", "Showers"),
     82: ("⛈️", "زخات عنيفة", "Averses violentes", "Violent showers"),
@@ -250,14 +308,28 @@ WMO = {  # code -> (emoji, ar, fr, en)
 def load_env(path: Path | None = None) -> None:
     """Tiny .env loader: KEY=VALUE, no shell expansion, never overwrites real env."""
     p = path or Path(__file__).resolve().parent / ".env"
-    if not p.is_file():
-        return
-    for raw in p.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
+    if p.is_file():
+        for raw in p.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
+    lat = os.environ.get("WEATHER_LAT", "").strip()
+    lon = os.environ.get("WEATHER_LON", "").strip()
+    tz = os.environ.get("WEATHER_TZ", "").strip()
+    try:
+        if lat:
+            CONFIG["lat"] = float(lat)
+    except ValueError:
+        pass
+    try:
+        if lon:
+            CONFIG["lon"] = float(lon)
+    except ValueError:
+        pass
+    if tz:
+        CONFIG["tz"] = tz
 
 
 def now_local(tz_name: str) -> datetime:
@@ -353,7 +425,7 @@ def uv_level(uv, levels: list[str]) -> str:
 
 
 # --------------------------------------------------------------------------- fetch
-def fetch_weather(lang: str, retries: int, timeout: int, lat: float | None = None,
+def fetch_weather(retries: int, timeout: int, lat: float | None = None,
                   lon: float | None = None, tz: str | None = None) -> dict:
     daily = ",".join([
         "temperature_2m_max", "temperature_2m_min", "apparent_temperature_max",
@@ -430,7 +502,7 @@ def fetch_weather_metno(lat: float | None, lon: float | None, tz: str | None,
     except Exception:
         gust = wind
     code = metno_symbol_code(now["sym"])
-    ris, set_ = sunrise_sunset(rlat, rlon)
+    ris, set_ = sunrise_sunset(rlat, rlon, tz or CONFIG["tz"])
     return {
         "current": {
             "temperature_2m": now["temp"], "apparent_temperature": now["temp"],
@@ -452,9 +524,9 @@ def fetch_weather_metno(lat: float | None, lon: float | None, tz: str | None,
     }
 
 
-def sunrise_sunset(lat: float, lon: float) -> tuple[str, str]:
+def sunrise_sunset(lat: float, lon: float, tz: str | None = None) -> tuple[str, str]:
     """Local sunrise/sunset as HH:MM, computed astronomically (no network)."""
-    times = compute_prayer_times(lat, lon, CONFIG["tz"])
+    times = compute_prayer_times(lat, lon, tz or CONFIG["tz"])
     if times is None:
         return "—", "—"
     return times["timings"].get("Sunrise", "—"), times["timings"].get("Maghrib", "—")
@@ -506,6 +578,18 @@ def _geo_probe(query: str, country_code: str, retries: int, timeout: int) -> lis
     return (data or {}).get("results") or []
 
 
+def guess_tz(lon: float) -> str:
+    """Approximate IANA zone name from longitude (no tzdata lookup).
+
+    Python maps ``Etc/GMT±n`` straight to a fixed offset, so a city far from
+    Morocco still gets a sane solar day even without an exact timezone."""
+    hours = round(lon / 15)
+    if hours == 0:
+        return "Etc/GMT"
+    sign = "-" if hours > 0 else "+"  # Etc/GMT has inverted sign convention
+    return f"Etc/GMT{sign}{abs(hours)}"
+
+
 def _geocode_nominatim(query: str, retries: int, timeout: int) -> dict:
     """Fallback geocoder: Nominatim (OpenStreetMap), Morocco-city first."""
     params = {"q": query, "format": "jsonv2", "limit": 5,
@@ -531,11 +615,12 @@ def _geocode_nominatim(query: str, retries: int, timeout: int) -> dict:
     name = (best.get("display_name") or query).split(",")[0].strip()
     admin1 = (best.get("address") or {}).get("state") or ""
     country = (best.get("address") or {}).get("country") or ""
+    tz = CONFIG["tz"] if _cc(best) == "MA" else guess_tz(float(best["lon"]))
     return {
         "name": name,
         "display": ", ".join(x for x in (name, admin1, country) if x),
         "lat": float(best["lat"]), "lon": float(best["lon"]),
-        "tz": CONFIG["tz"], "admin1": admin1, "country": country,
+        "tz": tz, "admin1": admin1, "country": country,
     }
 
 
@@ -750,8 +835,12 @@ def build_message(w: dict, data: dict, lang: str, place: str | None = None) -> s
         conf_key, conf_detail = confidence(w)
         conf_line = f"{L['models']}: {L[conf_key]}" + (f" · {conf_detail}" if conf_detail else "")
     prov = "met.no" if is_metno else "Open-Meteo (ECMWF·GFS)"
-    src = (f"{L['source']} {prov} · {data.get('latitude', CONFIG['lat']):.3f}°N "
-           f"{abs(data.get('longitude', CONFIG['lon'])):.3f}°W · {loc.strftime('%H:%M') if loc else ''} {L['sent_at']}"
+    mlat = data.get("latitude", CONFIG["lat"])
+    mlon = data.get("longitude", CONFIG["lon"])
+    ns = "S" if mlat < 0 else "N"
+    ew = "W" if mlon < 0 else "E"
+    src = (f"{L['source']} {prov} · {abs(mlat):.3f}°{ns} "
+           f"{abs(mlon):.3f}°{ew} · {loc.strftime('%H:%M') if loc else ''} {L['sent_at']}"
            ).replace("  ", " ")
     return (f"{emoji} <b>{title}</b>\n{esc(date_line)}\n\n"
             f"{body}\n\n✅ {L['advice']}: {esc(adv)}\n"
@@ -844,7 +933,7 @@ def whoami(token: str, timeout: int, retries: int) -> int:
 # --------------------------------------------------------------------------- prayer
 def fetch_prayer(lat: float, lon: float, retries: int, timeout: int,
                  timezone: str | None = None) -> dict:
-    """Prayer times by coordinates via Aladhan API (method 15 = Morocco Habous).
+    """Prayer times by coordinates via Aladhan API (method 21 = Morocco Habous).
 
     If the API is unreachable, fall back to a local astronomical calculation
     (Ministry-of-Habous-like angles). `computed` marks the fallback so the
@@ -1015,7 +1104,7 @@ def build_city_weather(query: str, lang: str, retries: int, timeout: int) -> str
     L = T[lang]
     try:
         city = geocode_city(query, retries, timeout)
-        data = fetch_weather(lang, retries, timeout, lat=city["lat"], lon=city["lon"], tz=city["tz"])
+        data = fetch_weather(retries, timeout, lat=city["lat"], lon=city["lon"], tz=city["tz"])
         w = extract(data)
         return build_message(w, data, lang, place=f"{city['name']}")
     except Exception as e:
@@ -1037,6 +1126,27 @@ def build_city_prayer(query: str, lang: str, retries: int, timeout: int) -> str:
         return f"{L['cmd']['error']} {esc(str(e))[:400]}\n\n{L['cmd']['net_error']}"
 
 
+def offset_state_path() -> Path:
+    """Bot-local JSON file that remembers the last getUpdates offset."""
+    return Path(__file__).resolve().parent / "poll_offset.json"
+
+
+def load_offset() -> int | None:
+    try:
+        raw = offset_state_path().read_text(encoding="utf-8").strip()
+        val = int(json.loads(raw))
+        return val if val > 0 else None
+    except Exception:
+        return None
+
+
+def save_offset(offset: int) -> None:
+    try:
+        offset_state_path().write_text(json.dumps(offset), encoding="utf-8")
+    except Exception:
+        pass  # best effort only: worst case we re-read a few old updates
+
+
 def get_updates_once(token: str, offset: int | None, timeout: int, retries: int) -> list[dict]:
     params = {"timeout": POLL_LONG_POLL, "limit": 50, "offset": offset} if offset is not None else {
         "timeout": POLL_LONG_POLL, "limit": 50}
@@ -1048,17 +1158,23 @@ def get_updates_once(token: str, offset: int | None, timeout: int, retries: int)
 def poll_bot(token: str, lang: str, retries: int, timeout: int) -> int:
     """Long-poll Telegram and answer every message, forever."""
     print("Listening on Telegram... press Ctrl+C to stop.")
-    offset: int | None = None
+    offset: int | None = load_offset()
+    if offset:
+        print(f"resuming poll from update offset {offset}")
+    errors = 0
     while True:
         updates: list[dict] = []
         try:
             updates = get_updates_once(token, offset, max(timeout, POLL_LONG_POLL + 15), 1)
         except Exception as e:
-            print(f"poll error (will retry in 5s): {e}", file=sys.stderr)
-            time.sleep(5)
+            print(f"poll error (will retry): {e}", file=sys.stderr)
+            errors += 1
+            time.sleep(min(5 * 2 ** (errors - 1), 60))  # exponential backoff, cap 60s
             continue
+        errors = 0
         for upd in updates:
             offset = max(offset or 0, (upd.get("update_id") or 0) + 1)
+            save_offset(offset)
             msg = upd.get("message") or upd.get("channel_post") or {}
             chat = msg.get("chat") or {}
             chat_id = chat.get("id")
@@ -1178,8 +1294,8 @@ def selftest() -> int:
     sparse = {"daily": {"time": ["2026-09-22"]}, "current": {}}
     try:
         sm = build_message(extract(sparse), sparse, "ar")
-        check("sparse renders", "32.881" not in sm or True)
-        check("sparse has dashes", "—" in sm)
+        check("sparse renders with dashes", "—" in sm)
+        check("sparse keeps title", "خريبكة" in sm)
     except Exception as e:
         check(f"sparse crashed: {e!r}", False)
     try:  # all-null daily arrays (happens for far-future dates)
@@ -1244,6 +1360,23 @@ def selftest() -> int:
     check("prayer coords emoji", "📍" in pm4)
     pm4b = build_prayer_message(pray, "ar", "سيدني", coords=(-33.8688, 151.2093))
     check("prayer coords southern/eastern", "33.869°S" in pm4b and "151.209°E" in pm4b)
+
+    # 6-ter-quater. fr/en have the cmd table too (regression: KeyError used to crash)
+    pm_fr = build_prayer_message(pray, "fr", "Rabat")
+    check("prayer fr renders", "Fajr" in pm_fr and "rabbit" not in pm_fr)
+    pm_en = build_prayer_message(pray, "en", "Rabat")
+    check("prayer en renders", "Fajr" in pm_en and "Salaat" not in pm_en)
+    check("help fr routes", "Commandes" in handle_text("/help", "fr", 1, 5))
+    check("help en routes", "commands" in handle_text("/help", "en", 1, 5))
+    check("start fr routes", "Bienvenue" in handle_text("بداية", "fr", 1, 5))
+    err_fr = handle_text("qqzzxx", "fr", 1, 3)
+    check("fr unknown city handled", ("Erreur" in err_fr) or ("introuvable" in err_fr) or ("❌" in err_fr))
+
+    # 6-quinquies. guess_tz sanity (city timezone fallback for non-MA)
+    check("guess_tz Berlin UTC+1", guess_tz(13.4) == "Etc/GMT-1")
+    check("guess_tz Tokyo UTC+9", guess_tz(139.7) == "Etc/GMT-9")
+    check("guess_tz London UTC", guess_tz(-0.1) == "Etc/GMT")
+    check("guess_tz Lima UTC-5", guess_tz(-77.04) == "Etc/GMT+5")
 
     # 6-quad. fallback providers (offline/deterministic)
     check("metno clearsky maps to code 0", metno_symbol_code("clearsky_day") == 0)
@@ -1328,7 +1461,8 @@ def main(argv: list[str] | None = None) -> int:
         if not tok:
             print("ERROR: exporte d'abord TELEGRAM_BOT_TOKEN (voir .env.example)", file=sys.stderr)
             return 3
-        return whoami(tok, int(os.environ.get("HTTP_TIMEOUT", "25")), 2)
+        return whoami(tok, int(os.environ.get("HTTP_TIMEOUT", "25")),
+                      int(os.environ.get("RETRIES", "4")))
 
     timeout = int(os.environ.get("HTTP_TIMEOUT", "25"))
     retries = int(os.environ.get("RETRIES", "4"))
@@ -1344,11 +1478,14 @@ def main(argv: list[str] | None = None) -> int:
             return 3
         return poll_bot(tok, args.lang, retries, timeout)
 
-    CONFIG["lang"] = args.lang
+    if args.only_at is not None and now_local(CONFIG["tz"]).hour != args.only_at:
+        print(f"skipped: local hour {now_local(CONFIG['tz']).hour} != {args.only_at}")
+        return 0
+
     lang = args.lang
 
     try:
-        data = fetch_weather(lang, retries, timeout)
+        data = fetch_weather(retries, timeout)
     except Exception as e:
         print(f"ERROR fetching weather: {e}", file=sys.stderr)
         token, chats = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
@@ -1365,11 +1502,6 @@ def main(argv: list[str] | None = None) -> int:
 
     w = extract(data)
     msg = build_message(w, data, lang)
-
-    if args.only_at is not None:
-        if now_local(CONFIG["tz"]).hour != args.only_at:
-            print(f"skipped: local hour {now_local(CONFIG['tz']).hour} != {args.only_at}")
-            return 0
 
     if args.send and not args.dry_run:
         token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()

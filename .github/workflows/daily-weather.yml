@@ -30,6 +30,12 @@ jobs:
           elif [ -f khouribga-weather-bot/weather_bot.py ]; then echo "SCRIPT=khouribga-weather-bot/weather_bot.py" >> "$GITHUB_ENV";
           else echo "::error::weather_bot.py not found in the repo" >&2; exit 1; fi
 
+      - name: Install deps
+        run: python -m pip install --quiet -r requirements.txt
+
+      - name: Self-test (offline)
+        run: python "$SCRIPT" --selftest
+
       - name: Send 07:00 bulletin (no-op at other hours)
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

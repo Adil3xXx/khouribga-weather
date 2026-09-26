@@ -10,6 +10,7 @@ cp "$(dirname "$0")/weather_bot.py" "$APP_DIR/"
 [ -f "$APP_DIR/.env" ] || { cp "$(dirname "$0")/.env.example" "$APP_DIR/.env"; chmod 600 "$APP_DIR/.env"; }
 chmod 700 "$APP_DIR/.env"
 PY="$(command -v python3)"
+"$PY" -m pip install --quiet -r "$(dirname "$0")/requirements.txt" 2>/dev/null || true
 "$PY" "$APP_DIR/weather_bot.py" --selftest
 
 ( crontab -l 2>/dev/null | grep -v "$MARKER" ; \
