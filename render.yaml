@@ -1,0 +1,23 @@
+# Render Blueprint: hosts the interactive Telegram bot 24/7 for free.
+# See https://render.com/docs/blueprint-spec for the schema.
+services:
+  - type: worker
+    name: khouribga-weather-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python weather_bot.py --poll
+    envVars:
+      - key: MESSAGE_LANGUAGE
+        value: ar
+      - key: HTTP_TIMEOUT
+        value: "25"
+      - key: RETRIES
+        value: "4"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      # Fill these two in the Render dashboard (secrets, not committed):
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
